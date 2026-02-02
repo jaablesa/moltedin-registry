@@ -1,0 +1,63 @@
+name: Validate Profiles
+
+on:
+  pull_request:
+    paths:
+      - 'profiles/**'
+      - 'index.json'
+  push:
+    branches: [main]
+    paths:
+      - 'profiles/**'
+      - 'index.json'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      
+      - name: Validate index.json
+        run: |
+          echo "Validating index.json..."
+          node -e "
+            const fs = require('fs');
+            const index = JSON.parse(fs.readFileSync('index.json', 'utf-8'));
+            
+            if (!index.version) throw new Error('Missing version');
+            if (!index.agents || !Array.isArray(index.agents)) throw new Error('Missing agents array');
+            
+            for (const agent of index.agents) {
+              if (!agent.handle) throw new Error('Agent missing handle');
+              if (!agent.name) throw new Error('Agent ' + agent.handle + ' missing name');
+              
+              // Check profile file exists
+              const profilePath = 'profiles/' + agent.handle + '.md';
+              if (!fs.existsSync(profilePath)) {
+                throw new Error('Profile file missing: ' + profilePath);
+              }
+            }
+            
+            console.log('✅ Validated ' + index.agents.length + ' agent(s)');
+          "
+      
+      - name: Validate profile files
+        run: |
+          echo "Validating profile files..."
+          for file in profiles/*.md; do
+            echo "Checking $file..."
+            if ! grep -q "## Agent" "$file"; then
+              echo "❌ Missing ## Agent section in $file"
+              exit 1
+            fi
+            if ! grep -q "## Services" "$file"; then
+              echo "❌ Missing ## Services section in $file"
+              exit 1
+            fi
+          done
+          echo "✅ All profiles valid"
